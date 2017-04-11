@@ -5,38 +5,43 @@ module HTTP2
   class Connection
     include Emitter
 
+    alias SettingsHash = Hash(Symbol, (Int32 | UInt32))
+
     # First thing a HTTP/2 client sends to the server
     PREFACE = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
     # Default connection settings as defined in RFC 7540
     SPEC_DEFAULT_SETTINGS = {
-      settings_header_table_size:      4096,
-      settings_enable_push:            1,
-      settings_max_concurrent_streams: Frame::MAX_STREAM_ID,
-      settings_initial_window_size:    65_535,
-      settings_max_frame_size:         16_384,
-      settings_max_header_list_size:   2**31 - 1,
+      :settings_header_table_size      => 4096,
+      :settings_enable_push            => 1,
+      :settings_max_concurrent_streams => Frame::MAX_STREAM_ID,
+      :settings_initial_window_size    => 65_535,
+      :settings_max_frame_size         => 16_384,
+      :settings_max_header_list_size   => 2**31 - 1,
     }
 
     # Our default settings
     DEFAULT_SETTINGS = {
-      settings_max_concurrent_streams: 100,
+      :settings_max_concurrent_streams => 100,
     }
 
     # Settings name/id mapping
     SETTINGS_MAP = {
-      settings_header_table_size:      1_u16,
-      settings_enable_push:            2_u16,
-      settings_max_concurrent_streams: 3_u16,
-      settings_initial_window_size:    4_u16,
-      settings_max_frame_size:         5_u16,
-      settings_max_header_list_size:   6_u16,
+      :settings_header_table_size      => 1_u16,
+      :settings_enable_push            => 2_u16,
+      :settings_max_concurrent_streams => 3_u16,
+      :settings_initial_window_size    => 4_u16,
+      :settings_max_frame_size         => 5_u16,
+      :settings_max_header_list_size   => 6_u16,
     }
 
     getter hpack_encoder : HPACK::Encoder
     getter hpack_decoder : HPACK::Decoder
 
-    def initialize(io)
+    property local_settings : SettingsHash
+    property remote_settings : SettingsHash
+
+    def initialize(io : Socket)
       @io = io
       @local_settings = SPEC_DEFAULT_SETTINGS.merge(DEFAULT_SETTINGS)
       @remote_settings = SPEC_DEFAULT_SETTINGS.dup
@@ -60,7 +65,7 @@ module HTTP2
     end
 
     def send_goaway(error_code : Error::Code)
-      payload = MemoryIO.new
+      payload = IO::Memory.new
       payload.write_bytes(@last_stream_id, IO::ByteFormat::BigEndian)
       payload.write_bytes(error_code.value, IO::ByteFormat::BigEndian)
       frame = Frame.new(Frame::Type::GoAway, 0_u32, Frame::Flags::None, payload.to_slice)
@@ -68,7 +73,7 @@ module HTTP2
     end
 
     def send_rst_stream(error_code : Error::Code)
-      payload = MemoryIO.new
+      payload = IO::Memory.new
       payload.write_bytes(error_code.value, IO::ByteFormat::BigEndian)
       frame = Frame.new(Frame::Type::RstStream, @last_stream_id, Frame::Flags::None, payload.to_slice)
       send_frame(frame)
@@ -86,7 +91,7 @@ module HTTP2
         end
       when Frame::Type::PushPromise
         if frame.headers
-          io = MemoryIO.new
+          io = IO::Memory.new
           io.write(frame.payload)
           io.write(hpack_encoder.encode(frame.headers.not_nil!))
           payload = io.to_slice
@@ -122,7 +127,7 @@ module HTTP2
       process_settings(receive_frame(Frame::Type::Settings))
     end
 
-    def receive_frame(type : Frame::Type = nil)
+    def receive_frame(type : Frame::Type? = nil)
       frame = Frame.new(@io, @local_settings[:settings_max_frame_size].to_u32)
       emit(:frame_received, frame)
       @last_stream_id = frame.stream_id if frame.stream_id > @last_stream_id
@@ -219,7 +224,7 @@ module HTTP2
          # TODO: mark as ACKed?
       else
         length = frame.payload.size
-        payload_io = MemoryIO.new(frame.payload)
+        payload_io = IO::Memory.new(frame.payload)
 
         while length > 0
           identifier = SETTINGS_MAP.key(payload_io.read_bytes(UInt16, IO::ByteFormat::BigEndian))
@@ -243,7 +248,7 @@ module HTTP2
     def process_headers(frame : Frame)
       stream = find_or_create_stream(frame.stream_id)
 
-      payload_io = MemoryIO.new(frame.payload)
+      payload_io = IO::Memory.new(frame.payload)
       length = frame.payload.size.to_u32
 
       if frame.flags.includes? Frame::Flags::Padded
@@ -265,7 +270,7 @@ module HTTP2
       payload_io.read(header_block)
 
       unless frame.flags.includes? Frame::Flags::EndHeaders
-        io = MemoryIO.new
+        io = IO::Memory.new
         io.write(header_block)
         io.write(receive_continuation_frames(stream))
         header_block = io.to_slice
@@ -275,7 +280,7 @@ module HTTP2
     end
 
     def receive_continuation_frames(stream : Stream)
-      io = MemoryIO.new
+      io = IO::Memory.new
       while frame = receive_frame(Frame::Type::Continuation)
         raise Error.new(Error::Code::PROTOCOL_ERROR) if frame.stream_id != stream.id
         io.write(frame.payload)
@@ -286,7 +291,7 @@ module HTTP2
 
     def process_window_update(frame)
       stream = find_or_create_stream(frame.stream_id)
-      payload_io = MemoryIO.new(frame.payload)
+      payload_io = IO::Memory.new(frame.payload)
       size = payload_io.read_bytes(UInt32, IO::ByteFormat::BigEndian) & 0x7fffffff_u32
       # TODO: do something with the new size"
     end

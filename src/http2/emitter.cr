@@ -21,7 +21,7 @@ module HTTP2
 
   # Inspired by https://github.com/igrigorik/http-2
   module Emitter
-    def on(event : Symbol, &block : Proc(Emittable,Void))
+    def on(event : Symbol, &block : Proc(Emittable, Nil))
       listeners(event).push(block)
     end
 
@@ -33,8 +33,8 @@ module HTTP2
 
     def listeners(event : Symbol)
       if !@listeners
-        @listeners = Hash(Symbol, Array(Proc(Emittable,Void))).new do |hash, key|
-          hash[key] = [] of Proc(Emittable,Void)
+        @listeners = Hash(Symbol, Array(Proc(Emittable, Nil))).new do |hash, key|
+          hash[key] = [] of Proc(Emittable, Nil)
         end
       end
       @listeners.not_nil![event]

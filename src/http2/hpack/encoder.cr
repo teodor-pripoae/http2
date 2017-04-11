@@ -11,7 +11,7 @@ module HTTP2
       end
 
       def encode(headers : Array(Array(String)))
-        io = MemoryIO.new
+        io = IO::Memory.new
         headers.each do |h|
           # TODO: literal field without indexing
           # TODO: literal field never indexed
@@ -36,7 +36,7 @@ module HTTP2
       end
 
       private def encode_string(str : String, huffman : Bool)
-        io = MemoryIO.new
+        io = IO::Memory.new
         slice = str.to_slice
         size = slice.size.to_u32
         header = encode_integer(size, 7_u8)
@@ -52,7 +52,7 @@ module HTTP2
 
       private def encode_integer(n : UInt32, prefix : UInt8)
         max = 2 ** prefix - 1
-        io = MemoryIO.new
+        io = IO::Memory.new
 
         if n < max
           io.write_byte(n.to_u8)

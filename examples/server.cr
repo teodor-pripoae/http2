@@ -3,7 +3,7 @@ require "colorize"
 require "option_parser"
 
 class Hello
-  def initialize(@ip, @h1_port, @h2_port, @root = ".")
+  def initialize(@ip : String, @h1_port : Int32, @h2_port : Int32, @root : String = ".")
   end
 
   def content_type(path)

@@ -97,7 +97,7 @@ module HTTP2
     end
 
     def push_promise(stream_id : UInt32, headers : Array(Array(String)))
-      io = MemoryIO.new
+      io = IO::Memory.new
       io.write_bytes(stream_id & 0x7fffffff_u32, IO::ByteFormat::BigEndian)
       f = Frame.new(Frame::Type::PushPromise, id, Frame::Flags::EndHeaders, io.to_slice, headers)
       emit(:frame, f)
