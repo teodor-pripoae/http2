@@ -4,7 +4,9 @@ module HTTP2
       class DecodingError < Exception
       end
 
-      def initialize(table)
+      alias Table = Hash(UInt8, Tuple(UInt32, UInt8))
+
+      def initialize(table : Table)
         @decoding_table = Hash(UInt8, Hash(UInt32, UInt8)).new
         @table = table
         @table.each do |value, bits|
@@ -15,7 +17,7 @@ module HTTP2
       end
 
       def encode(slice : Slice(UInt8))
-        io = MemoryIO.new
+        io = IO::Memory.new
         buffer = 0_u8
         offset = 8 # number of bits that are still unused in buffer
         slice.each do |byte|
@@ -51,7 +53,7 @@ module HTTP2
       end
 
       def decode(slice : Slice(UInt8))
-        io = MemoryIO.new
+        io = IO::Memory.new
         lookup = 0_u32
         length = 0_u8
         slice.each do |byte|
